@@ -1,0 +1,234 @@
+import tkinter as tk
+from tkinter import messagebox
+import requests
+
+# --- BANCO DE DADOS EM MEMÓRIA ---
+# Criamos uma lista de dicionários para simular o armazenamento dos dados.
+# Cada pokemon salvo terá a estrutura: {"id": int, "nome": str, "apelido": str}
+pokebox_local = []
+id_contador = 1  # Gerador de ID incremental automático para o CRUD
+
+# --- FUNÇÕES DO SISTEMA ---
+
+def buscar_pokemons():
+    """
+    [CONSUMO DE API]
+    Busca dados do Pokémon em tempo real na PokéAPI externa.
+    """
+    # Obtém o texto digitado pelo usuário, remove espaços extras e converte para minúsculo
+    pokemon = entry_pokemon.get().strip().lower()
+    
+    # Limpa o campo de texto de resultados antes de exibir uma nova busca
+    text_resultados.delete("1.0", tk.END)
+
+    # Validação: impede a busca caso o campo esteja vazio
+    if not pokemon:
+        text_resultados.insert(tk.END, "Por favor, digite o nome de um Pokémon.")
+        return
+
+    # URL base da API pública que estamos consumindo
+    url = f"https://pokeapi.co/api/v2/pokemon/{pokemon}"
+    
+    try:
+        # Faz a requisição HTTP GET para a API
+        resposta = requests.get(url)
+        
+        # Código 200 significa que o Pokémon foi encontrado com sucesso
+        if resposta.status_code == 200:
+            dados = resposta.json()  # Converte a resposta em um dicionário Python
+            
+            # Extrai e formata os dados necessários da API
+            nome = dados["name"].capitalize()
+            altura = dados["height"] / 10  # A API retorna em decímetros, convertemos para metros
+            peso = dados["weight"] / 10    # A API retorna em decigramas, convertemos para quilos
+
+            # Monta a string informativa e insere na interface gráfica
+            texto_final = f"Nome: {nome}\nAltura: {altura} m\nPeso: {peso} kg\n\nPronto para ser capturado!"
+            text_resultados.insert(tk.END, texto_final)
+            
+            # Guarda o nome globalmente para que a função de captura (Create) saiba quem salvar
+            global pokemon_atual_buscado
+            pokemon_atual_buscado = nome
+        else:
+            # Caso a API retorne outro código (ex: 404), o Pokémon não existe
+            text_resultados.insert(tk.END, "Pokémon não encontrado!\nTente novamente.")
+            pokemon_atual_buscado = None
+            
+    except requests.exceptions.RequestException:
+        # Tratamento de erro caso o usuário esteja sem internet ou a API esteja fora do ar
+        text_resultados.insert(tk.END, "Erro de conexão. Verifique sua internet.")
+        pokemon_atual_buscado = None
+
+
+# --- OPERAÇÕES CRUD ---
+
+def cadastrar_pokemon():
+    """
+    [CREATE - C do CRUD]
+    Captura o Pokémon que acabou de ser buscado e o adiciona à PokeBox local.
+    """
+    global id_contador, pokemon_atual_buscado
+    
+    # Validação: impede capturar se o usuário não buscou um Pokémon válido antes
+    if 'pokemon_atual_buscado' not in globals() or not pokemon_atual_buscado:
+        messagebox.showwarning("Aviso", "Busque um Pokémon válido primeiro!")
+        return
+    
+    # Captura o apelido digitado pelo usuário
+    apelido = entry_apelido.get().strip()
+    if not apelido:
+        apelido = "Sem apelido"  # Define um valor padrão caso o usuário deixe em branco
+        
+    # Cria o novo registro (objeto/dicionário)
+    novo_pokemon = {
+        "id": id_contador,
+        "nome": pokemon_atual_buscado,
+        "apelido": apelido
+    }
+    
+    # Insere o registro na nossa lista local (Simulação de INSERT no Banco de Dados)
+    pokebox_local.append(novo_pokemon)
+    id_contador += 1  # Incrementa o ID para o próximo Pokémon
+    
+    # Feedback visual de sucesso para o usuário
+    messagebox.showinfo("Sucesso", f"{pokemon_atual_buscado} foi capturado com sucesso!")
+    
+    # Limpa o campo de texto do apelido e atualiza a lista da tela
+    entry_apelido.delete(0, tk.END)
+    atualizar_lista_interface()
+
+
+def atualizar_lista_interface():
+    """
+    [READ - R do CRUD]
+    Lê os dados da lista na memória e atualiza o componente Listbox da interface.
+    """
+    # Limpa a lista visual atual para não duplicar os itens
+    listbox_pokemons.delete(0, tk.END)
+    
+    # Percorre toda a nossa "Mochila" local e insere formatado na Listbox
+    for p in pokebox_local:
+        listbox_pokemons.insert(tk.END, f"ID: {p['id']} | {p['nome']} ('{p['apelido']}')")
+
+
+def atualizar_apelido_pokemon():
+    """
+    [UPDATE - U do CRUD]
+    Modifica o apelido do Pokémon selecionado na lista visual.
+    """
+    # Obtém o índice do item que o usuário clicou na Listbox
+    selecionado = listbox_pokemons.curselection()
+    
+    # Validação: verifica se o usuário realmente selecionou alguém
+    if not selecionado:
+        messagebox.showwarning("Aviso", "Selecione um Pokémon da lista para atualizar!")
+        return
+    
+    # Captura o novo apelido que foi digitado no campo de texto
+    novo_apelido = entry_apelido.get().strip()
+    if not novo_apelido:
+        messagebox.showwarning("Aviso", "Digite o novo apelido no campo de texto.")
+        return
+    
+    # Descobre o ID do Pokémon selecionado extraindo o número que está no texto da Listbox
+    texto_item = listbox_pokemons.get(selecionado[0])
+    id_selecionado = int(texto_item.split("|")[0].replace("ID:", "").strip())
+    
+    # Percorre a nossa lista na memória para achar o Pokémon correspondente e altera o apelido
+    for p in pokebox_local:
+        if p["id"] == id_selecionado:
+            p["apelido"] = novo_apelido
+            messagebox.showinfo("Sucesso", f"Apelido do {p['nome']} atualizado para '{novo_apelido}'!")
+            break
+            
+    # Limpa o campo de entrada e atualiza a interface gráfica
+    entry_apelido.delete(0, tk.END)
+    atualizar_lista_interface()
+
+
+def deletar_pokemon():
+    """
+    [DELETE - D do CRUD]
+    Libera/Exclui o Pokémon selecionado da lista local.
+    """
+    # Obtém o índice selecionado na Listbox
+    selecionado = listbox_pokemons.curselection()
+    
+    # Validação: verifica se há algum Pokémon selecionado
+    if not selecionado:
+        messagebox.showwarning("Aviso", "Selecione um Pokémon da lista para libertar!")
+        return
+    
+    # Descobre o ID do item selecionado na interface
+    texto_item = listbox_pokemons.get(selecionado[0])
+    id_selecionado = int(texto_item.split("|")[0].replace("ID:", "").strip())
+    
+    # Recria a lista local filtrando e removendo o Pokémon que possui o ID selecionado
+    global pokebox_local
+    pokebox_local = [p for p in pokebox_local if p["id"] != id_selecionado]
+    
+    # Mostra mensagem de sucesso e atualiza a listagem visual
+    messagebox.showinfo("Sucesso", "Pokémon libertado de volta para a natureza!")
+    atualizar_lista_interface()
+
+
+# --- INTERFACE GRÁFICA ---
+
+# Inicializa a janela principal do sistema
+janela = tk.Tk()
+janela.title("PokéMochila") 
+janela.geometry("600x450")
+janela.configure(background="#FFDE00") # Cor de fundo: Amarelo temático do Pokémon
+
+# --- SEÇÃO DE BUSCA E CONSULTA (Lado Esquerdo) ---
+frame_busca = tk.LabelFrame(janela, text=" 1. Buscar na PokéAPI ", bg="#FFDE00", fg="black", font=("Arial", 10, "bold"))
+frame_busca.place(x=15, y=10, width=260, height=420)
+
+label = tk.Label(frame_busca, text="Nome do Pokémon:", bg="#FFDE00") 
+label.pack(pady=2)
+
+entry_pokemon = tk.Entry(frame_busca, justify="center", font=("Arial", 11))
+entry_pokemon.pack(pady=5)
+
+botao_buscar = tk.Button(frame_busca, text="Buscar", command=buscar_pokemons, bg="#3B4CCA", fg="white", font=("Arial", 9, "bold"))
+botao_buscar.pack(pady=2)
+
+# Caixa de Texto multilinha onde serão exibidos os resultados da API
+text_resultados = tk.Text(frame_busca, width=28, height=12, font=("Arial", 10)) 
+text_resultados.pack(pady=10)
+
+# --- SEÇÃO CRUD / MOCHILA LOCAL (Lado Direito) ---
+frame_crud = tk.LabelFrame(janela, text=" 2. Mochila ", bg="#3B4CCA", fg="white", font=("Arial", 10, "bold"))
+frame_crud.place(x=290, y=10, width=295, height=420)
+
+label_apelido = tk.Label(frame_crud, text="Nome/Apelido do Pokémon", bg="#3B4CCA", fg="white")
+label_apelido.pack(pady=2)
+
+entry_apelido = tk.Entry(frame_crud, justify="center", font=("Arial", 11))
+entry_apelido.pack(pady=2)
+
+# Sub-container para alinhar os botões lado a lado organizadamente
+frame_botoes = tk.Frame(frame_crud, bg="#3B4CCA")
+frame_botoes.pack(pady=5)
+
+# Botão de Criação (C) do CRUD
+btn_capturar = tk.Button(frame_botoes, text="Capturar (C)", command=cadastrar_pokemon, bg="#4CC9F0", fg="black", width=12)
+btn_capturar.grid(row=0, column=0, padx=5, pady=2)
+
+# Botão de Atualização (U) do CRUD
+btn_atualizar = tk.Button(frame_botoes, text="Mudar Apelido (U)", command=atualizar_apelido_pokemon, bg="#4361EE", fg="white", width=14)
+btn_atualizar.grid(row=0, column=1, padx=5, pady=2)
+
+label_lista = tk.Label(frame_crud, text="Meus Pokémons Capturados:", bg="#3B4CCA", fg="white")
+label_lista.pack(pady=2)
+
+# Componente Listbox que exibe visualmente os dados da nossa leitura (R) do CRUD
+listbox_pokemons = tk.Listbox(frame_crud, width=38, height=10, font=("Arial", 9))
+listbox_pokemons.pack(pady=5)
+
+# Botão de Deleção (D) do CRUD localizado estrategicamente abaixo da lista
+btn_deletar = tk.Button(frame_crud, text="Libertar Pokémon (D)", command=deletar_pokemon, bg="#F72585", fg="white", font=("Arial", 9, "bold"))
+btn_deletar.pack(pady=5)
+
+# Mantém a janela ativa e escutando os eventos/cliques do usuário
+janela.mainloop()
